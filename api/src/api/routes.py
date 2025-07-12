@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Path, Depends, HTTPException, Request
 from typing import Annotated, List, Dict, Optional
 
-from opperai import Opper, trace
+from opperai import Opper
 from .clients.scheduling import SchedulingClient
 from .utils import log
 from .models import (
@@ -27,7 +27,6 @@ OpperHandle = Annotated[Opper, Depends(get_opper_handle)]
 
 #### Helper Functions ####
 
-@trace
 def process_schedule_change(
     opper: Opper,
     request_text: str,
@@ -36,7 +35,9 @@ def process_schedule_change(
     rules: Dict
 ) -> ScheduleChangeAnalysis:
     """Process a natural language schedule change request."""
-    analysis_result, _ = opper.call(
+    span = opper.spans.create(name="process_schedule_change")
+
+    response = opper.call(
         name="analyze_schedule_change",
         instructions="""
         Analyze this schedule change request considering the rules and provide a clear recommendation.
@@ -51,12 +52,19 @@ def process_schedule_change(
             "current_schedule": current_schedule,
             "rules": rules
         },
-        output_type=ScheduleChangeAnalysis
+        output_schema=ScheduleChangeAnalysis,
+        parent_span_id=span.id
     )
 
-    # Make sure the original query is included in the analysis
-    analysis_result.original_query = request_text
-    logger.info(f"Schedule change request analysis: {analysis_result.dict()}")
+    analysis_result = response.json_payload
+
+    opper.spans.update(
+        span_id=span.id,
+        input={"request_text": request_text, "employees_count": len(employees), "schedules_count": len(current_schedule)},
+        output=analysis_result
+    )
+
+    logger.info(f"Schedule change request analysis: {analysis_result}")
     return analysis_result
 
 #### Routes ####
@@ -306,10 +314,10 @@ async def process_schedule_change_request(
 
     # Apply changes to the schedule if recommended
     try:
-        if (analysis.recommendation == "approve"):
-            for change in analysis.changes:
-                target_date = change.target_date
-                suggested_replacement = change.suggested_replacement
+        if (analysis['recommendation'] == "approve"):
+            for change in analysis['changes']:
+                target_date = change['target_date']
+                suggested_replacement = change['suggested_replacement']
 
                 # Find the employee number for the suggested replacement
                 replacement_employee = next(

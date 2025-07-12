@@ -32,7 +32,7 @@ async def lifespan(app: FastAPI):
 
     # Run init_default_data as an async task
     asyncio.create_task(init_default_data_async(app.state.db))
-    app.state.opper = Opper(api_key=conf.get_opper_api_key())
+    app.state.opper = Opper(http_bearer=conf.get_opper_api_key())
 
     logger.info("Application initialized")
 
