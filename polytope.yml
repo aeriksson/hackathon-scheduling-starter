@@ -36,7 +36,7 @@ modules:
     args:
       id: frontend
       image: node:22-bullseye-slim
-      code: { type: host, path: ./frontend }
+      code: { type: host, path: frontend }
       cmd: ./bin/run
       env:
         - { name: PORT, value: 8000 }
